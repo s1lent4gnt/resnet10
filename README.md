@@ -41,7 +41,7 @@ model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k")
 ### How to convert
 
 ```bash
-poetry run python convert_jax_to_pytorch.py --model_name helper2424/resnet10-imagenet-1k --push_to_hub True
+poetry run python resnet_10/convert_jax_to_pytorch.py --model_name helper2424/resnet10-imagenet-1k --push_to_hub True
 ```
 
 ### Validation
@@ -49,5 +49,5 @@ poetry run python convert_jax_to_pytorch.py --model_name helper2424/resnet10-ima
 This script will download the model from the hub and validate that it works as expected.
 
 ```bash
-poetry run python main.py --model_name helper2424/resnet10-imagenet-1k
+poetry run python resnet_10/validate.py --model_name helper2424/resnet10-imagenet-1k
 ```
