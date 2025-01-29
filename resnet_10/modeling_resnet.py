@@ -33,14 +33,10 @@ class BasicBlock(nn.Module):
         self.norm1 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         self.act1 = ACT2FN[activation]
         self.act2 = ACT2FN[activation]
-        self.conv2 = nn.Conv2d(
-            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
-        )
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         self.shortcut = nn.Sequential(
-            nn.Conv2d(
-                in_channels, out_channels, kernel_size=1, stride=stride, bias=False
-            ),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
             nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
         )
 
@@ -84,9 +80,7 @@ class ResNet10(PreTrainedModel):
             #             return x[0]
             #         else:
             #             return super().__call__(x)
-            nn.GroupNorm(
-                num_groups=4, eps=1e-5, num_channels=self.config.embedding_size
-            ),
+            nn.GroupNorm(num_groups=4, eps=1e-5, num_channels=self.config.embedding_size),
             ACT2FN[self.config.hidden_act],
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
