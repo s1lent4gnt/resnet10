@@ -1,16 +1,14 @@
- [project]
+[project]
 name = "resnet-10"
 version = "0.1.0"
-description = "The port of HIL-SERL Resnet10"
+description = ""
 authors = [
     {name = "Eugene Mironov",email = "helper2424@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "torch (>=2.5.1,<3.0.0)",
-    "transformers (>=4.48.1,<5.0.0)",
-    "torchvision (>=0.20.1,<0.21.0)"
+    "torch (>=2.5.1,<3.0.0)"
 ]
 
 
