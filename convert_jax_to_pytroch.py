@@ -13,15 +13,17 @@
 # limitations under the License.
 # -----------------------------------------------------------------------------
 
+import argparse
 import os
 import pickle as pkl
+
 import requests
-from tqdm import tqdm
-import argparse
 import torch
+from tqdm import tqdm
+from transformers import ResNetConfig
 
 from modeling_resnet import ResNet10
-from transformers import ResNetConfig
+
 
 # The original code is copied from https://github.com/rail-berkeley/hil-serl/blob/7d17d13560d85abffbd45facec17c4f9189c29c0/serl_launcher/serl_launcher/utils/train_utils.py#L103
 # It downloads the pretrained ResNet-10 weights for HIL-SERL implementation
@@ -68,35 +70,57 @@ def load_resnet10_params(image_keys=("image",), public=True):
         with open(file_path, "rb") as f:
             encoder_params = pkl.load(f)
 
-    print(
-        f"Loaded parameters from ResNet-10 pretrained on ImageNet-1K"
-    )
+    print("Loaded parameters from ResNet-10 pretrained on ImageNet-1K")
 
     return encoder_params
 
-def apply_block_weights(block, jax_state_dict):
-    block.conv1.load_state_dict(convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict['Conv_0']))
-    block.conv2.load_state_dict(convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict['Conv_1']))
 
-    block.norm1.load_state_dict(convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict['MyGroupNorm_0']))
-    block.norm2.load_state_dict(convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict['MyGroupNorm_1']))
+def apply_block_weights(block, jax_state_dict):
+    block.conv1.load_state_dict(
+        convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict["Conv_0"])
+    )
+    block.conv2.load_state_dict(
+        convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict["Conv_1"])
+    )
+
+    block.norm1.load_state_dict(
+        convert_jax_norm_state_dict_to_torch_norm_state_dict(
+            jax_state_dict["MyGroupNorm_0"]
+        )
+    )
+    block.norm2.load_state_dict(
+        convert_jax_norm_state_dict_to_torch_norm_state_dict(
+            jax_state_dict["MyGroupNorm_1"]
+        )
+    )
+
 
 def convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict):
-    conv = torch.Tensor(list(jax_state_dict['kernel'].tolist())).permute(3, 2, 1, 0)
-    return {'weight': conv}
+    conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 1, 0)
+    return {"weight": conv}
+
 
 def convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict):
-    return {'weight': torch.Tensor(jax_state_dict['scale'].tolist()),
-            'bias': torch.Tensor(jax_state_dict['bias'].tolist())}
+    return {
+        "weight": torch.Tensor(jax_state_dict["scale"].tolist()),
+        "bias": torch.Tensor(jax_state_dict["bias"].tolist()),
+    }
+
 
 def apply_pretrained_resnet10_params(model, params):
-    model.embedder[0].load_state_dict(convert_jax_conv_state_dict_to_torch_conv_state_dict(params['conv_init']))
+    model.embedder[0].load_state_dict(
+        convert_jax_conv_state_dict_to_torch_conv_state_dict(params["conv_init"])
+    )
 
-    model.embedder[1].load_state_dict({'weight': torch.Tensor(params['norm_init']['scale'].tolist()),
-                                       'bias': torch.Tensor(params['norm_init']['bias'].tolist())})
-    
+    model.embedder[1].load_state_dict(
+        {
+            "weight": torch.Tensor(params["norm_init"]["scale"].tolist()),
+            "bias": torch.Tensor(params["norm_init"]["bias"].tolist()),
+        }
+    )
+
     for i, block in enumerate(model.encoder):
-        apply_block_weights(block, params[f'ResNetBlock_{i}'])
+        apply_block_weights(block, params[f"ResNetBlock_{i}"])
 
 
 if __name__ == "__main__":
@@ -106,10 +130,7 @@ if __name__ == "__main__":
         "--model_name",
         default=None,
         type=str,
-        help=(
-            "The name of the model you wish to convert, it must be one of the supported resnet* architecture,"
-            " currently: resnet18,26,34,50,101,152. If `None`, all of them will the converted."
-        ),
+        help=("The name of the model you wish to convert."),
     )
     parser.add_argument(
         "--push_to_hub",
@@ -127,13 +148,12 @@ if __name__ == "__main__":
         hidden_act="relu",
         hidden_sizes=[64, 128, 256, 512],  # Smaller hidden sizes for ResNet-10
         depths=[1, 1, 1, 1],  # One block per stage for ResNet-10
-    )  
+    )
 
     model = ResNet10(config)
     params = load_resnet10_params()
     apply_pretrained_resnet10_params(model, params)
-    
+
     if args.push_to_hub:
         model.push_to_hub(args.model_name)
         print(f"Model uploaded successfully to Hugging Face Hub! {args.model_name}")
-

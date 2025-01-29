@@ -13,24 +13,35 @@
 # limitations under the License.
 # -----------------------------------------------------------------------------
 
-from transformers import ResNetConfig
 import torch.nn as nn
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, ResNetConfig
 from transformers.activations import ACT2FN
+
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, activation, stride=1, norm_groups=4):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
         self.norm1 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         self.act1 = ACT2FN[activation]
         self.act2 = ACT2FN[activation]
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.norm2 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         self.shortcut = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-            nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=stride, bias=False
+            ),
+            nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
         )
 
     def forward(self, x):
@@ -47,15 +58,23 @@ class BasicBlock(nn.Module):
             out += x
         return self.act2(out)
 
+
 class ResNet10(PreTrainedModel):
     config_class = ResNetConfig
 
     def __init__(self, config):
         super().__init__(config)
-   
+
         self.embedder = nn.Sequential(
-            nn.Conv2d(self.config.num_channels, self.config.embedding_size, kernel_size=7, stride=2, padding=3, bias=False),
-            # The original code has a small trick - 
+            nn.Conv2d(
+                self.config.num_channels,
+                self.config.embedding_size,
+                kernel_size=7,
+                stride=2,
+                padding=3,
+                bias=False,
+            ),
+            # The original code has a small trick -
             # https://github.com/rail-berkeley/hil-serl/blob/main/serl_launcher/serl_launcher/vision/resnet_v1.py#L119
             # class MyGroupNorm(nn.GroupNorm):
             #     def __call__(self, x):
@@ -65,18 +84,33 @@ class ResNet10(PreTrainedModel):
             #             return x[0]
             #         else:
             #             return super().__call__(x)
-            nn.GroupNorm(num_groups=4, eps=1e-5, num_channels=self.config.embedding_size),
+            nn.GroupNorm(
+                num_groups=4, eps=1e-5, num_channels=self.config.embedding_size
+            ),
             ACT2FN[self.config.hidden_act],
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
-        
+
         self.encoder = nn.Sequential()
 
         for i, size in enumerate(self.config.hidden_sizes):
             if i == 0:
-                self.encoder.append(BasicBlock(self.config.embedding_size, size, activation=self.config.hidden_act))
+                self.encoder.append(
+                    BasicBlock(
+                        self.config.embedding_size,
+                        size,
+                        activation=self.config.hidden_act,
+                    )
+                )
             else:
-                self.encoder.append(BasicBlock(self.config.hidden_sizes[i-1], size, activation=self.config.hidden_act, stride=2))
+                self.encoder.append(
+                    BasicBlock(
+                        self.config.hidden_sizes[i - 1],
+                        size,
+                        activation=self.config.hidden_act,
+                        stride=2,
+                    )
+                )
 
     def forward(self, x):
         out = self.embedder(x)

@@ -12,22 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # -----------------------------------------------------------------------------
-import os
-import torch
-import torch.nn as nn
-from transformers import PreTrainedModel, PretrainedConfig, AutoImageProcessor, AutoModel
-from huggingface_hub import HfApi
-
-from transformers import ResNetConfig, ResNetModel
-
-from modeling_resnet import ResNet10
-
-from torchvision.datasets import CIFAR10
-from torchvision.transforms import ToTensor
-
-from torch.utils.data import DataLoader
 import argparse
 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision.datasets import CIFAR10
+from torchvision.transforms import ToTensor
+from transformers import AutoModel
 
 BATCH_SIZE = 128
 if torch.cuda.is_available():
@@ -36,6 +28,7 @@ elif torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
 else:
     DEVICE = torch.device("cpu")
+
 
 def main():
     # Validate that model works as expected
@@ -47,14 +40,12 @@ def main():
         "--model_name",
         default=None,
         type=str,
-        help=(
-            "The model name to download from the hub."
-        ),
+        help=("The model name to download from the hub."),
     )
 
     args = parser.parse_args()
 
-    model = AutoModel.from_pretrained(args.model_name)      
+    model = AutoModel.from_pretrained(args.model_name)
 
     model.to(DEVICE)
 
@@ -66,26 +57,32 @@ def main():
             new_label = float(1.0) if label == target_class else float(0.0)
             new_targets.append(new_label)
 
-        dataset.targets = new_targets  # Replace the original labels with the binary ones
+        dataset.targets = (
+            new_targets  # Replace the original labels with the binary ones
+        )
         return dataset
 
-    binary_train_dataset = CIFAR10(root="data", train=True, download=True, transform=ToTensor())
-    binary_test_dataset = CIFAR10(root="data", train=False, download=True, transform=ToTensor())
+    binary_train_dataset = CIFAR10(
+        root="data", train=True, download=True, transform=ToTensor()
+    )
+    binary_test_dataset = CIFAR10(
+        root="data", train=False, download=True, transform=ToTensor()
+    )
 
     # Apply one-vs-rest labeling
     binary_train_dataset = one_vs_rest(binary_train_dataset, target_binary_class)
     binary_test_dataset = one_vs_rest(binary_test_dataset, target_binary_class)
 
-    binary_trainloader = DataLoader(binary_train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    binary_testloader = DataLoader(binary_test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    binary_epoch = 1
+    DataLoader(binary_train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    binary_testloader = DataLoader(
+        binary_test_dataset, batch_size=BATCH_SIZE, shuffle=False
+    )
 
     post_steps = nn.Sequential(
         nn.Dropout(0.1),
         nn.Linear(in_features=512, out_features=256),
         nn.LayerNorm(normalized_shape=256),
-        nn.Tanh()
+        nn.Tanh(),
     )
 
     post_steps.to(DEVICE)
@@ -94,7 +91,6 @@ def main():
 
     print(model)
 
-    abort()
     test_loss = 0.0
     test_labels = []
     test_pridections = []
@@ -117,6 +113,7 @@ def main():
     test_loss = test_loss / len(binary_test_dataset)
 
     print(f"Test Loss: {test_loss:.4f}")
+
 
 if __name__ == "__main__":
     main()
