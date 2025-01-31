@@ -22,7 +22,8 @@ import torch
 from huggingface_hub import ModelCard
 from modeling_resnet import ResNet10
 from tqdm import tqdm
-from transformers import ResNetConfig
+from transformers import AutoImageProcessor, ResNetConfig
+from transformers.image_utils import PILImageResampling
 
 
 # The original code is copied from https://github.com/rail-berkeley/hil-serl/blob/7d17d13560d85abffbd45facec17c4f9189c29c0/serl_launcher/serl_launcher/utils/train_utils.py#L103
@@ -109,8 +110,8 @@ def apply_pretrained_resnet10_params(model, params):
         apply_block_weights(block, params[f"ResNetBlock_{i}"])
 
 
-def create_card_model_content():
-    return """
+def create_card_model_content(model_name):
+    return f"""
 ---
 language: en
 license: apache-2.0
@@ -157,7 +158,7 @@ This model was converted using an automated JAX to PyTorch conversion pipeline, 
 ## Usage
 ```python
 from transformers import AutoModel, AutoTokenizer
-model = AutoModel.from_pretrained("helper2424/test2")
+model = AutoModel.from_pretrained("{model_name}")
 ```
 """
 
@@ -193,10 +194,24 @@ if __name__ == "__main__":
     params = load_resnet10_params()
     apply_pretrained_resnet10_params(model, params)
 
+    # Lets use MS's processor with modifications
+    processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50", trust_remote_code=True)
+    processor.image_mean = [0.485, 0.456, 0.406]
+    processor.image_std = [0.229, 0.224, 0.225]
+    processor.do_scale = True
+    processor.rescale_factor = 0.00392156862745098
+    processor.do_resize = True
+    processor.size = {"shortest_edge": 128}
+    processor.crop_pct = 1
+    processor.resample = PILImageResampling.BILINEAR
+
     if args.push_to_hub:
         model.push_to_hub(args.model_name)
         print(f"Model uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-        card = ModelCard(content=create_card_model_content())
+        card = ModelCard(content=create_card_model_content(args.model_name))
         card.push_to_hub(args.model_name)
         print(f"Model card uploaded successfully to Hugging Face Hub! {args.model_name}")
+
+        processor.push_to_hub(args.model_name)
+        print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
