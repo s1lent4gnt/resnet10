@@ -9,9 +9,12 @@ import jax.numpy as jnp
 import numpy as np
 import torch
 from flax.core import freeze, unfreeze
-from transformers import AutoModel
+from transformers import AutoImageProcessor, AutoModel
 
 ModuleDef = Any
+
+jax_hidden_states = {}
+torch_hidden_states = {}
 
 
 class AddSpatialCoordinates(nn.Module):
@@ -203,6 +206,7 @@ class ResNetEncoder(nn.Module):
         cond_var=None,
         stop_gradient=False,
     ):
+        global jax_hidden_states
         # put inputs in [-1, 1]
         # x = observations.astype(jnp.float32) / 127.5 - 1.0
         # if observations.shape[-3:-1] != self.image_size:
@@ -212,6 +216,8 @@ class ResNetEncoder(nn.Module):
         mean = jnp.array([0.485, 0.456, 0.406])
         std = jnp.array([0.229, 0.224, 0.225])
         x = (observations.astype(jnp.float32) / 255.0 - mean) / std
+
+        jax_hidden_states["preprocessing"] = x
 
         if self.add_spatial_coordinates:
             x = AddSpatialCoordinates(dtype=self.dtype)(x)
@@ -245,9 +251,14 @@ class ResNetEncoder(nn.Module):
             name="conv_init",
         )(x)
 
+        jax_hidden_states["conv_init"] = x
+
         x = norm(name="norm_init")(x)
+        jax_hidden_states["norm_init"] = x
         x = act(x)
+        jax_hidden_states["act_init"] = x
         x = nn.max_pool(x, (3, 3), strides=(2, 2), padding="SAME")
+        jax_hidden_states["max_pool_init"] = x
         for i, block_size in enumerate(self.stage_sizes):
             for j in range(block_size):
                 stride = (2, 2) if i > 0 and j == 0 else (1, 1)
@@ -392,10 +403,14 @@ def initialize_and_load_weights():
     return model, new_params
 
 
-if __name__ == "__main__":
-    model = resnetv1_configs["resnetv1-10-frozen"]()
+def jax_to_torch(x):
+    return torch.from_numpy(np.array(x)).permute(0, 3, 2, 1)
 
-    model, new_params = initialize_and_load_weights()
+
+if __name__ == "__main__":
+    jax_model = resnetv1_configs["resnetv1-10-frozen"]()
+
+    jax_model, new_params = initialize_and_load_weights()
 
     # Test with real input (batch_size=2)
     real_input_1 = jnp.zeros((1, 128, 128, 3), dtype=jnp.float32)
@@ -404,22 +419,43 @@ if __name__ == "__main__":
     real_input = jnp.concatenate([real_input_1, real_input_2], axis=0)
 
     # Run inference
-    outputs = model.apply({"params": new_params}, real_input, train=False)
+    outputs = jax_model.apply({"params": new_params}, real_input, train=False)
 
     print("Model output shape:", outputs.shape)
 
+    processor = AutoImageProcessor.from_pretrained("helper2424/test2")
     model = AutoModel.from_pretrained("helper2424/test2", trust_remote_code=True)
 
     dummy_input_1 = torch.zeros(1, 3, 128, 128)
     dummy_input_2 = torch.ones(1, 3, 128, 128)
     dummy_input = torch.cat([dummy_input_1, dummy_input_2], dim=0)
 
-    pred = model(dummy_input)
+    processsed_input = processor(dummy_input, return_tensors="pt")
+    processsed_input = processsed_input["pixel_values"]
+
+    torch_hidden_states = {}
+    torch_hidden_states["preprocessing"] = processsed_input
+    torch_hidden_states["conv_init"] = model.embedder[0](processsed_input)
+    torch_hidden_states["norm_init"] = model.embedder[1](torch_hidden_states["conv_init"])
+    torch_hidden_states["act_init"] = model.embedder[2](torch_hidden_states["norm_init"])
+    torch_hidden_states["max_pool_init"] = model.embedder[3](torch_hidden_states["act_init"])
+
+    torch_model_output = model(processsed_input, output_hidden_states=True)
+    pred = torch_model_output.last_hidden_state
 
     # In order to compare the outputs, we need to convert the PyTorch output to JAX
     # We have to permute the channel dimension of torch array because jax is channel-last
-    pred = pred.permute(0, 2, 3, 1).detach().numpy()
-    print(pred.shape)
 
+    outputs = jax_to_torch(outputs)
+
+    assert outputs.shape == pred.shape
     # Compare the outputs
-    assert np.allclose(outputs, pred, atol=1e-6)
+    assert np.allclose(outputs.detach().numpy(), pred.detach().numpy(), atol=1e-6)
+
+    for k, v in torch_hidden_states.items():
+        print(k)
+        jax_tensor = jax_to_torch(jax_hidden_states[k])
+        print(jax_tensor.shape)
+        print(v.shape)
+        assert jax_tensor.shape == v.shape
+        assert np.allclose(jax_tensor.detach().numpy(), v.detach().numpy(), atol=1e-3)
