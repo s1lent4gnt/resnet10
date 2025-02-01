@@ -16,7 +16,7 @@ The model is available on Hugging Face Hub. You can use it as follows:
 ```python
 from transformers import AutoModel
 
-model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k")
+model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k", trust_remote_code=True)
 ```
 
 ### Installation

@@ -109,7 +109,7 @@ def apply_pretrained_resnet10_params(model, params):
         strict=True,
     )
 
-    for i, block in enumerate(model.encoder):
+    for i, block in enumerate(model.encoder.stages):
         apply_block_weights(block, params[f"ResNetBlock_{i}"])
 
 
@@ -218,7 +218,7 @@ if __name__ == "__main__":
 
     pred = model(dummy_input)
 
-    print("Test for forward pass:", pred.shape)
+    print("Test for forward pass:", pred.last_hidden_state.shape)
 
     # Lets use MS's processor with modifications
     processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50", trust_remote_code=True)

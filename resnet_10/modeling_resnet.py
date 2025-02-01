@@ -13,9 +13,13 @@
 # limitations under the License.
 # -----------------------------------------------------------------------------
 
+from typing import Optional
+
 import torch.nn as nn
+from torch import Tensor
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
+from transformers.modeling_outputs import BaseModelOutputWithNoAttention
 
 from .configuration_resnet import ResNet10Config
 
@@ -57,6 +61,49 @@ class BasicBlock(nn.Module):
         return self.act2(out)
 
 
+class Encoder(nn.Module):
+    def __init__(self, config: ResNet10Config):
+        super().__init__()
+        self.config = config
+        self.stages = nn.ModuleList([])
+
+        for i, size in enumerate(self.config.hidden_sizes):
+            if i == 0:
+                self.stages.append(
+                    BasicBlock(
+                        self.config.embedding_size,
+                        size,
+                        activation=self.config.hidden_act,
+                    )
+                )
+            else:
+                self.stages.append(
+                    BasicBlock(
+                        self.config.hidden_sizes[i - 1],
+                        size,
+                        activation=self.config.hidden_act,
+                        stride=2,
+                    )
+                )
+
+    def forward(self, hidden_state: Tensor, output_hidden_states: bool = False) -> BaseModelOutputWithNoAttention:
+        hidden_states = () if output_hidden_states else None
+
+        for stage in self.stages:
+            if output_hidden_states:
+                hidden_states = hidden_states + (hidden_state,)
+
+            hidden_state = stage(hidden_state)
+
+        if output_hidden_states:
+            hidden_states = hidden_states + (hidden_state,)
+
+        return BaseModelOutputWithNoAttention(
+            last_hidden_state=hidden_state,
+            hidden_states=hidden_states,
+        )
+
+
 class ResNet10(PreTrainedModel):
     config_class = ResNet10Config
 
@@ -87,32 +134,19 @@ class ResNet10(PreTrainedModel):
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
 
-        self.encoder = nn.Sequential()
+        self.encoder = Encoder(self.config)
 
-        for i, size in enumerate(self.config.hidden_sizes):
-            if i == 0:
-                self.encoder.append(
-                    BasicBlock(
-                        self.config.embedding_size,
-                        size,
-                        activation=self.config.hidden_act,
-                    )
-                )
-            else:
-                self.encoder.append(
-                    BasicBlock(
-                        self.config.hidden_sizes[i - 1],
-                        size,
-                        activation=self.config.hidden_act,
-                        stride=2,
-                    )
-                )
+    def forward(self, x: Tensor, output_hidden_states: Optional[bool] = None) -> BaseModelOutputWithNoAttention:
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        embedding_output = self.embedder(x)
+        encoder_outputs = self.encoder(embedding_output, output_hidden_states=output_hidden_states)
 
-    def forward(self, x):
-        out = self.embedder(x)
-        out = self.encoder(out)
-
-        return out
+        return BaseModelOutputWithNoAttention(
+            last_hidden_state=encoder_outputs.last_hidden_state,
+            hidden_states=encoder_outputs.hidden_states,
+        )
 
     def print_model_hash(self):
         print("Model parameters hashes:")
