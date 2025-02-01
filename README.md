@@ -28,8 +28,8 @@ model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k")
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/resnet-jax-to-pytorch.git
-   cd resnet-jax-to-pytorch
+   git clone https://github.com/helper2424/resnet-10.git
+   cd resnet_10
    ```
 
 3. Install dependencies:
@@ -41,7 +41,7 @@ model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k")
 ### How to convert
 
 ```bash
-poetry run python resnet_10/convert_jax_to_pytorch.py --model_name helper2424/resnet10-imagenet-1k --push_to_hub True
+poetry run python convert_jax_to_pytorch.py --model_name helper2424/resnet10-imagenet-1k --push_to_hub True
 ```
 
 ### Validation

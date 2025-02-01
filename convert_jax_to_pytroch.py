@@ -20,10 +20,12 @@ import pickle as pkl
 import requests
 import torch
 from huggingface_hub import ModelCard
-from modeling_resnet import ResNet10
 from tqdm import tqdm
-from transformers import AutoImageProcessor, ResNetConfig
+from transformers import AutoConfig, AutoImageProcessor, AutoModel
 from transformers.image_utils import PILImageResampling
+
+from resnet_10.configuration_resnet import ResNet10Config
+from resnet_10.modeling_resnet import ResNet10
 
 
 # The original code is copied from https://github.com/rail-berkeley/hil-serl/blob/7d17d13560d85abffbd45facec17c4f9189c29c0/serl_launcher/serl_launcher/utils/train_utils.py#L103
@@ -103,7 +105,8 @@ def apply_pretrained_resnet10_params(model, params):
         {
             "weight": torch.Tensor(params["norm_init"]["scale"].tolist()),
             "bias": torch.Tensor(params["norm_init"]["bias"].tolist()),
-        }
+        },
+        strict=True,
     )
 
     for i, block in enumerate(model.encoder):
@@ -182,7 +185,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config = ResNetConfig(
+    config = ResNet10Config(
         num_channels=3,
         embedding_size=64,
         hidden_act="relu",
@@ -190,9 +193,32 @@ if __name__ == "__main__":
         depths=[1, 1, 1, 1],  # One block per stage for ResNet-10
     )
 
+    if args.push_to_hub:
+        ResNet10Config.register_for_auto_class()
+        ResNet10.register_for_auto_class()
+        print("Registered for auto class")
+
+        config.push_to_hub(args.model_name)
+        print(f"Config uploaded successfully to Hugging Face Hub! {args.model_name}")
+
+        config = AutoConfig.from_pretrained(args.model_name, trust_remote_code=True)
+        print(f"Config loaded successfully from Hugging Face Hub! {args.model_name}")
+
     model = ResNet10(config)
     params = load_resnet10_params()
+    model.train()
     apply_pretrained_resnet10_params(model, params)
+
+    print("Before pushing model to hub:")
+    model.print_model_hash()
+
+    dummy_input_1 = torch.zeros(1, 3, 128, 128)
+    dummy_input_2 = torch.ones(1, 3, 128, 128)
+    dummy_input = torch.cat([dummy_input_1, dummy_input_2], dim=0)
+
+    pred = model(dummy_input)
+
+    print("Test for forward pass:", pred.shape)
 
     # Lets use MS's processor with modifications
     processor = AutoImageProcessor.from_pretrained("microsoft/resnet-50", trust_remote_code=True)
@@ -215,3 +241,7 @@ if __name__ == "__main__":
 
         processor.push_to_hub(args.model_name)
         print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
+
+        loaded_model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
+        print("Loaded model parameters hashes:")
+        loaded_model.print_model_hash()

@@ -14,8 +14,10 @@
 # -----------------------------------------------------------------------------
 
 import torch.nn as nn
-from transformers import PreTrainedModel, ResNetConfig
+from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
+
+from .configuration_resnet import ResNet10Config
 
 
 class BasicBlock(nn.Module):
@@ -56,7 +58,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet10(PreTrainedModel):
-    config_class = ResNetConfig
+    config_class = ResNet10Config
 
     def __init__(self, config):
         super().__init__(config)
@@ -111,3 +113,8 @@ class ResNet10(PreTrainedModel):
         out = self.encoder(out)
 
         return out
+
+    def print_model_hash(self):
+        print("Model parameters hashes:")
+        for name, param in self.named_parameters():
+            print(name, param.sum())

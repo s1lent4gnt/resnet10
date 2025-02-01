@@ -1,17 +1,15 @@
 import functools as ft
-from functools import partial
 import pickle
+from functools import partial
 from typing import Any, Callable, Optional, Sequence, Tuple
 
-from flax.core import freeze, unfreeze
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import numpy as np
-
 import torch
+from flax.core import freeze, unfreeze
 from transformers import AutoModel
-
 
 ModuleDef = Any
 
@@ -410,13 +408,13 @@ if __name__ == "__main__":
 
     print("Model output shape:", outputs.shape)
 
-    model = AutoModel.from_pretrained("helper2424/resnet10-imagenet-1k")
+    model = AutoModel.from_pretrained("helper2424/test2", trust_remote_code=True)
 
     dummy_input_1 = torch.zeros(1, 3, 128, 128)
     dummy_input_2 = torch.ones(1, 3, 128, 128)
     dummy_input = torch.cat([dummy_input_1, dummy_input_2], dim=0)
 
-    pred = model(dummy_input).last_hidden_state
+    pred = model(dummy_input)
 
     # In order to compare the outputs, we need to convert the PyTorch output to JAX
     # We have to permute the channel dimension of torch array because jax is channel-last
