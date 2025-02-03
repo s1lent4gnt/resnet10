@@ -1,0 +1,3 @@
+[submodule "hil-serl"]
+	path = hil-serl
+	url = https://github.com/rail-berkeley/hil-serl.git

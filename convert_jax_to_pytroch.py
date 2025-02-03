@@ -231,9 +231,8 @@ if __name__ == "__main__":
     processor.crop_pct = 1
     processor.resample = PILImageResampling.BILINEAR
 
-    if args.push_to_hub:
-        model.push_to_hub(args.model_name)
-        print(f"Model uploaded successfully to Hugging Face Hub! {args.model_name}")
+    jax_params = load_resnet10_params()  # Using the function from your code
+    model.load_jax_weights(jax_params)
 
         card = ModelCard(content=create_card_model_content(args.model_name))
         card.push_to_hub(args.model_name)
