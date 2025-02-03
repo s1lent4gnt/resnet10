@@ -234,13 +234,13 @@ if __name__ == "__main__":
     jax_params = load_resnet10_params()  # Using the function from your code
     model.load_jax_weights(jax_params)
 
-        card = ModelCard(content=create_card_model_content(args.model_name))
-        card.push_to_hub(args.model_name)
-        print(f"Model card uploaded successfully to Hugging Face Hub! {args.model_name}")
+    card = ModelCard(content=create_card_model_content(args.model_name))
+    card.push_to_hub(args.model_name)
+    print(f"Model card uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-        processor.push_to_hub(args.model_name)
-        print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
+    processor.push_to_hub(args.model_name)
+    print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-        loaded_model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
-        print("Loaded model parameters hashes:")
-        loaded_model.print_model_hash()
+    loaded_model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
+    print("Loaded model parameters hashes:")
+    loaded_model.print_model_hash()
