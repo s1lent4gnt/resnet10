@@ -85,6 +85,12 @@ def apply_block_weights(block, jax_state_dict):
     block.norm1.load_state_dict(convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict["MyGroupNorm_0"]))
     block.norm2.load_state_dict(convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict["MyGroupNorm_1"]))
 
+    if "conv_proj" in jax_state_dict:
+        # Convolution
+        block.shortcut[0].load_state_dict(convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict["conv_proj"]))
+        # Group Norm
+        block.shortcut[1].load_state_dict(convert_jax_norm_state_dict_to_torch_norm_state_dict(jax_state_dict["norm_proj"]))
+
 
 def convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict):
     conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 0, 1)
