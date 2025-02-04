@@ -23,6 +23,8 @@ from transformers.modeling_outputs import BaseModelOutputWithNoAttention
 
 from .configuration_resnet import ResNet10Config
 
+import math
+
 
 class JaxStyleMaxPool(nn.Module):
     def forward(self, x):
@@ -30,28 +32,71 @@ class JaxStyleMaxPool(nn.Module):
         return nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
 
 
+class JaxStyleConv2d(nn.Module):
+    """Mimics JAX's Conv2D with padding='SAME' for exact parity."""
+    
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=False):
+        super().__init__()
+        
+        # Ensure kernel_size and stride are tuples
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, 
+            kernel_size=self.kernel_size, 
+            stride=self.stride, 
+            padding=0,  # No padding
+            bias=bias
+        )
+
+    def _compute_padding(self, input_height, input_width):
+        """Calculate asymmetric padding to match JAX's 'SAME' behavior."""
+        
+        # Compute padding needed for height and width
+        pad_h = max(0, (math.ceil(input_height / self.stride[0]) - 1) * self.stride[0] + self.kernel_size[0] - input_height)
+        pad_w = max(0, (math.ceil(input_width / self.stride[1]) - 1) * self.stride[1] + self.kernel_size[1] - input_width)
+
+        # Asymmetric padding (JAX-style: more padding on the bottom/right if needed)
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+
+        return (pad_left, pad_right, pad_top, pad_bottom)
+
+    def forward(self, x):
+        """Apply asymmetric padding before convolution."""
+        _, _, h, w = x.shape
+        
+        # Compute asymmetric padding
+        pad_left, pad_right, pad_top, pad_bottom = self._compute_padding(h, w)
+        x = nn.functional.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+
+        return self.conv(x)
+
+
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, activation, stride=1, norm_groups=4):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(
+        self.conv1 = JaxStyleConv2d(
             in_channels,
             out_channels,
             kernel_size=3,
             stride=stride,
-            padding=1,
             bias=False,
         )
         self.norm1 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         self.act1 = ACT2FN[activation]
         self.act2 = ACT2FN[activation]
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = JaxStyleConv2d(out_channels, out_channels, kernel_size=3, stride=1, bias=False)
         self.norm2 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
         
         self.shortcut = None
         if in_channels != out_channels:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                JaxStyleConv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
                 nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
             )
 
