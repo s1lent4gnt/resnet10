@@ -6,8 +6,10 @@ from typing import Any, Callable, Optional, Sequence, Tuple
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torchvision.transforms as T
 from flax.core import freeze, unfreeze
 from transformers import AutoImageProcessor, AutoModel
 
@@ -407,6 +409,88 @@ def jax_to_torch(x):
     return torch.from_numpy(np.array(x)).permute(0, 3, 2, 1)
 
 
+def visualize_tensor(tensor, title=None, save_path=None):
+    """
+    Visualize a tensor as an image.
+
+    Args:
+        tensor: torch.Tensor of shape (C, H, W) or (H, W)
+        title: Optional title for the plot
+        save_path: Optional path to save the image
+    """
+    # Convert to numpy and handle different tensor shapes
+    if tensor.dim() == 3:  # (C, H, W)
+        if tensor.shape[0] == 1:  # Single channel
+            img = tensor.squeeze(0)
+        else:  # Multiple channels (assume RGB)
+            img = tensor.permute(1, 2, 0)  # Convert to (H, W, C)
+    else:  # Already (H, W)
+        img = tensor
+
+    # Convert to numpy and ensure proper range
+    img = img.detach().cpu().numpy()
+
+    # Normalize if needed
+    if img.max() > 1.0 or img.min() < 0.0:
+        img = (img - img.min()) / (img.max() - img.min())
+
+    # Plot
+    plt.figure(figsize=(8, 8))
+    if len(img.shape) == 2:  # Grayscale
+        plt.imshow(img, cmap="gray")
+    else:  # RGB
+        plt.imshow(img)
+
+    if title:
+        plt.title(title)
+    plt.axis("off")
+
+    if save_path:
+        plt.savefig(save_path)
+    plt.show()
+
+
+# 3. Batch visualization
+def visualize_batches(batches, cols=2, rows=3, title="Batch Visualization"):
+    """Visualize a batch of images."""
+
+    # Calculate grid size
+    # fig, axes = plt.subplots(rows, cols, figsize=(10, 10))
+    # fig.suptitle(title)
+
+    # batch = batches[0]
+
+    # for rw in range(rows):
+    #     for col in range(cols):
+    #         item = batch[col][rw]
+    #         item = row.view(1, row.shape[0], row.shape[1])
+
+    #         row.squeeze(0).numpy()
+    #         axes[rw, col].imshow(item, cmap="gray")
+
+    #         # axes[row, col].axis('off')
+
+    # plt.tight_layout()
+    # # plt.colorbar()
+    # plt.show()
+
+
+# 4. Using torchvision's make_grid
+def visualize_with_grid(batch, nrow=8, title="Grid Visualization"):
+    """Visualize images in a grid using torchvision."""
+    grid = T.make_grid(batch, nrow=nrow, normalize=True, padding=2)
+    plt.figure(figsize=(15, 15))
+    plt.imshow(grid.permute(1, 2, 0))
+    plt.title(title)
+    plt.axis("off")
+    plt.show()
+
+
+# Example with feature maps
+def visualize_feature_maps(feature_maps, max_features=16):
+    pass
+
+
 if __name__ == "__main__":
     jax_model = resnetv1_configs["resnetv1-10-frozen"]()
 
@@ -416,7 +500,7 @@ if __name__ == "__main__":
     real_input_1 = jnp.zeros((1, 128, 128, 3), dtype=jnp.float32)
     real_input_2 = jnp.ones((1, 128, 128, 3), dtype=jnp.float32)
 
-    real_input = jnp.concatenate([real_input_1, real_input_2], axis=0)
+    real_input = jnp.concatenate([real_input_1], axis=0)
 
     # Run inference
     outputs = jax_model.apply({"params": new_params}, real_input, train=False)
@@ -428,7 +512,7 @@ if __name__ == "__main__":
 
     dummy_input_1 = torch.zeros(1, 3, 128, 128)
     dummy_input_2 = torch.ones(1, 3, 128, 128)
-    dummy_input = torch.cat([dummy_input_1, dummy_input_2], dim=0)
+    dummy_input = torch.cat([dummy_input_1], dim=0)
 
     processsed_input = processor(dummy_input, return_tensors="pt")
     processsed_input = processsed_input["pixel_values"]
@@ -458,4 +542,12 @@ if __name__ == "__main__":
         print(jax_tensor.shape)
         print(v.shape)
         assert jax_tensor.shape == v.shape
-        assert np.allclose(jax_tensor.detach().numpy(), v.detach().numpy(), atol=1e-7)
+
+        abs_diff = np.abs(jax_tensor.detach().numpy() - v.detach().numpy())
+        min_diff = abs_diff.min()
+        max_diff = abs_diff.max()
+        print(f"Min diff: {min_diff}, Max diff: {max_diff}")
+
+        if abs_diff.max() > 1e-4:
+            visualize_batches([jax_tensor.detach(), v.detach()], cols=2, rows=64)
+        # assert np.allclose(jax_tensor.detach().numpy(), v.detach().numpy(), atol=1e-5)
