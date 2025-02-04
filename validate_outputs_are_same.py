@@ -269,6 +269,7 @@ class ResNetEncoder(nn.Module):
                     norm=norm,
                     act=act,
                 )(x)
+                jax_hidden_states[f"ResNetBlock_{i}"] = x
                 if self.use_multiplicative_cond:
                     assert cond_var is not None, "Cond var is None, nothing to condition on"
                     cond_out = nn.Dense(x.shape[-1], kernel_init=nn.initializers.xavier_normal())(cond_var)
@@ -439,6 +440,11 @@ if __name__ == "__main__":
     torch_hidden_states["norm_init"] = model.embedder[1](torch_hidden_states["conv_init"])
     torch_hidden_states["act_init"] = model.embedder[2](torch_hidden_states["norm_init"])
     torch_hidden_states["max_pool_init"] = model.embedder[3](torch_hidden_states["act_init"])
+
+    torch_hidden_states["ResNetBlock_0"] = model.encoder.stages[0](torch_hidden_states["max_pool_init"])
+    torch_hidden_states["ResNetBlock_1"] = model.encoder.stages[1](torch_hidden_states["ResNetBlock_0"])
+    torch_hidden_states["ResNetBlock_2"] = model.encoder.stages[2](torch_hidden_states["ResNetBlock_1"])
+    torch_hidden_states["ResNetBlock_3"] = model.encoder.stages[3](torch_hidden_states["ResNetBlock_2"])
 
     torch_model_output = model(processsed_input, output_hidden_states=True)
     pred = torch_model_output.last_hidden_state
