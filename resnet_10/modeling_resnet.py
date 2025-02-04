@@ -24,6 +24,12 @@ from transformers.modeling_outputs import BaseModelOutputWithNoAttention
 from .configuration_resnet import ResNet10Config
 
 
+class JaxStyleMaxPool(nn.Module):
+    def forward(self, x):
+        x = nn.functional.pad(x, (0, 1, 0, 1), value=-float('inf'))  # Pad right/bottom by 1 to match JAX's maxpooling padding="SAME"
+        return nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
+
+
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, activation, stride=1, norm_groups=4):
         super().__init__()
@@ -136,7 +142,7 @@ class ResNet10(PreTrainedModel):
             #             return super().__call__(x)
             nn.GroupNorm(num_groups=4, eps=1e-5, num_channels=self.config.embedding_size),
             ACT2FN[self.config.hidden_act],
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            JaxStyleMaxPool(),
         )
 
         self.encoder = Encoder(self.config)
