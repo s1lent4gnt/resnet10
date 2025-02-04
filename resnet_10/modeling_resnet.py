@@ -41,12 +41,17 @@ class BasicBlock(nn.Module):
         self.act2 = ACT2FN[activation]
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
-        self.shortcut = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-            nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
-        )
+        
+        self.shortcut = None
+        if in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
+            )
 
     def forward(self, x):
+        identity = x
+
         out = self.conv1(x)
         out = self.norm1(out)
         out = self.act1(out)
@@ -54,10 +59,10 @@ class BasicBlock(nn.Module):
         out = self.conv2(out)
         out = self.norm2(out)
 
-        if x.shape != out.shape:
-            out += self.shortcut(x)
-        else:
-            out += x
+        if self.shortcut is not None:
+            identity = self.shortcut(identity)
+
+        out += identity
         return self.act2(out)
 
 
