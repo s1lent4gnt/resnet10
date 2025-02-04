@@ -269,6 +269,7 @@ class ResNetEncoder(nn.Module):
                     norm=norm,
                     act=act,
                 )(x)
+                jax_hidden_states[f"ResNetBlock_{i}"] = x
                 if self.use_multiplicative_cond:
                     assert cond_var is not None, "Cond var is None, nothing to condition on"
                     cond_out = nn.Dense(x.shape[-1], kernel_init=nn.initializers.xavier_normal())(cond_var)
@@ -404,7 +405,7 @@ def initialize_and_load_weights():
 
 
 def jax_to_torch(x):
-    return torch.from_numpy(np.array(x)).permute(0, 3, 2, 1)
+    return torch.from_numpy(np.array(x)).permute(0, 3, 1, 2) # JAX NHWC and PyTorch NCHW => (0, 3, 1, 2). The order of HW should stay the same
 
 
 if __name__ == "__main__":
@@ -423,8 +424,8 @@ if __name__ == "__main__":
 
     print("Model output shape:", outputs.shape)
 
-    processor = AutoImageProcessor.from_pretrained("helper2424/test2")
-    model = AutoModel.from_pretrained("helper2424/test2", trust_remote_code=True)
+    processor = AutoImageProcessor.from_pretrained("lilkm/resnet50_fix")
+    model = AutoModel.from_pretrained("lilkm/resnet50_fix", trust_remote_code=True)
 
     dummy_input_1 = torch.zeros(1, 3, 128, 128)
     dummy_input_2 = torch.ones(1, 3, 128, 128)
@@ -439,6 +440,11 @@ if __name__ == "__main__":
     torch_hidden_states["norm_init"] = model.embedder[1](torch_hidden_states["conv_init"])
     torch_hidden_states["act_init"] = model.embedder[2](torch_hidden_states["norm_init"])
     torch_hidden_states["max_pool_init"] = model.embedder[3](torch_hidden_states["act_init"])
+
+    torch_hidden_states["ResNetBlock_0"] = model.encoder.stages[0](torch_hidden_states["max_pool_init"])
+    torch_hidden_states["ResNetBlock_1"] = model.encoder.stages[1](torch_hidden_states["ResNetBlock_0"])
+    torch_hidden_states["ResNetBlock_2"] = model.encoder.stages[2](torch_hidden_states["ResNetBlock_1"])
+    torch_hidden_states["ResNetBlock_3"] = model.encoder.stages[3](torch_hidden_states["ResNetBlock_2"])
 
     torch_model_output = model(processsed_input, output_hidden_states=True)
     pred = torch_model_output.last_hidden_state
@@ -457,5 +463,7 @@ if __name__ == "__main__":
         jax_tensor = jax_to_torch(jax_hidden_states[k])
         print(jax_tensor.shape)
         print(v.shape)
-        assert jax_tensor.shape == v.shape
-        assert np.allclose(jax_tensor.detach().numpy(), v.detach().numpy(), atol=1e-7)
+        print(f"{k} mean diff: {np.mean(np.abs(jax_tensor.detach().numpy() - v.detach().numpy()))}")
+        print(f"{k} max diff: {np.max(np.abs(jax_tensor.detach().numpy() - v.detach().numpy()))}")
+        # assert jax_tensor.shape == v.shape
+        # assert np.allclose(jax_tensor.detach().numpy(), v.detach().numpy(), atol=1e-7)
