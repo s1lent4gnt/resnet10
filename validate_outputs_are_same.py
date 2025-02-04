@@ -404,7 +404,7 @@ def initialize_and_load_weights():
 
 
 def jax_to_torch(x):
-    return torch.from_numpy(np.array(x)).permute(0, 3, 2, 1)
+    return torch.from_numpy(np.array(x)).permute(0, 3, 1, 2) # JAX NHWC and PyTorch NCHW => (0, 3, 1, 2). The order of HW should stay the same
 
 
 if __name__ == "__main__":
