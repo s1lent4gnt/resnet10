@@ -87,7 +87,7 @@ def apply_block_weights(block, jax_state_dict):
 
 
 def convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict):
-    conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 1, 0)
+    conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 0, 1)
     return {"weight": conv}
 
 
@@ -231,16 +231,17 @@ if __name__ == "__main__":
     processor.crop_pct = 1
     processor.resample = PILImageResampling.BILINEAR
 
-    jax_params = load_resnet10_params()  # Using the function from your code
-    model.load_jax_weights(jax_params)
+    if args.push_to_hub:
+        model.push_to_hub(args.model_name)
+        print(f"Model uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-    card = ModelCard(content=create_card_model_content(args.model_name))
-    card.push_to_hub(args.model_name)
-    print(f"Model card uploaded successfully to Hugging Face Hub! {args.model_name}")
+        card = ModelCard(content=create_card_model_content(args.model_name))
+        card.push_to_hub(args.model_name)
+        print(f"Model card uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-    processor.push_to_hub(args.model_name)
-    print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
+        processor.push_to_hub(args.model_name)
+        print(f"Processor uploaded successfully to Hugging Face Hub! {args.model_name}")
 
-    loaded_model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
-    print("Loaded model parameters hashes:")
-    loaded_model.print_model_hash()
+        loaded_model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
+        print("Loaded model parameters hashes:")
+        loaded_model.print_model_hash()

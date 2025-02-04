@@ -50,7 +50,7 @@ def load_and_preprocess_image(image_path: str) -> Tuple[torch.Tensor, jnp.ndarra
 
     torch_img = torch_transform(image)
 
-    # torch_img = torch.zeros((3, 128, 128), dtype=torch.float16)
+    # torch_img = torch.zeros((3, 128, 128), dtype=torch.float32)
 
     # Convert to JAX array with same preprocessing
     # np_img = np.array(image)
@@ -60,6 +60,7 @@ def load_and_preprocess_image(image_path: str) -> Tuple[torch.Tensor, jnp.ndarra
     
     # Add batch dimension
     torch_img = torch_img.unsqueeze(0)
+    # torch_img = torch_img.half()
     print("TORCh after numpy squeeze : ", torch_img.mean().item())
     # jax_img = jax_img[None, ...]
 
@@ -135,6 +136,8 @@ def benchmark_models(torch_model, jax_func, image_paths: list, num_runs: int = 1
             torch_time = time.perf_counter() - start_time
             results['torch_times'].append(torch_time)
             torch_features_list.append(torch_features)
+
+            print("+====================================+")
             
             # Time JAX forward pass
             start_time = time.perf_counter()
@@ -203,7 +206,7 @@ if __name__ == "__main__":
 
     # Create a sample dictionary
     sample = {
-        "image": jnp.zeros((1, 128, 128, 3))  # Single image, shape: NHWC format
+        "image": jnp.ones((1, 128, 128, 3))  # Single image, shape: NHWC format
     }
 
     classifier = create_classifier(jax.random.PRNGKey(0), sample, ["image"], n_way=2)

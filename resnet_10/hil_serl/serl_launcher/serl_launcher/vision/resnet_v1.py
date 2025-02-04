@@ -141,11 +141,17 @@ class ResNetBlock(nn.Module):
         x,
     ):
         residual = x
+        print("JAX input to block :", x.mean().item())
         y = self.conv(self.filters, (3, 3), self.strides)(x)
+        print("JAX conv1 :", y.mean().item())
         y = self.norm()(y)
+        print("JAX norm1 :", y.mean().item())
         y = self.act(y)
+        print("JAX act1 :", y.mean().item())
         y = self.conv(self.filters, (3, 3))(y)
+        print("JAX conv2 :", y.mean().item())
         y = self.norm()(y)
+        print("JAX norm1 :", y.mean().item())
 
         if residual.shape != y.shape:
             print("JAX before skip :", residual.mean().item())
@@ -156,7 +162,12 @@ class ResNetBlock(nn.Module):
             residual = self.norm(name="norm_proj")(residual)
             print("JAX after skip :", residual.mean().item())
 
-        return self.act(residual + y)
+        print("JAX before **** sum :", y.mean().item())
+        y = residual + y
+        print("JAX after sum :", y.mean().item())
+
+        # return self.act(residual + y)
+        return self.act(y)
 
 
 class BottleneckResNetBlock(nn.Module):

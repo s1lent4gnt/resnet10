@@ -41,12 +41,17 @@ class BasicBlock(nn.Module):
         self.act2 = ACT2FN[activation]
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
-        self.shortcut = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-            nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels),
-        )
+
+        # Only create shortcut if shapes don't match (like JAX implementation)
+        self.shortcut_conv = None
+        self.shortcut_norm = None
+        if in_channels != out_channels:
+            self.shortcut_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False)
+            self.shortcut_norm = nn.GroupNorm(num_groups=norm_groups, num_channels=out_channels)
 
     def forward(self, x):
+        identity = x
+
         out = self.conv1(x)
         out = self.norm1(out)
         out = self.act1(out)
@@ -54,11 +59,14 @@ class BasicBlock(nn.Module):
         out = self.conv2(out)
         out = self.norm2(out)
 
-        if x.shape != out.shape:
-            out += self.shortcut(x)
-        else:
-            out += x
-        return self.act2(out)
+        if self.shortcut_conv is not None:
+            identity = self.shortcut_conv(identity)
+            identity = self.shortcut_norm(identity)
+
+        out = out + identity
+        out = self.act2(out)
+        
+        return out
 
 
 class Encoder(nn.Module):
@@ -103,6 +111,10 @@ class Encoder(nn.Module):
             hidden_states=hidden_states,
         )
 
+class JaxStyleMaxPool(nn.Module):
+    def forward(self, x):
+        x = nn.functional.pad(x, (0, 1, 0, 1), value=-float('inf'))  # Pad right/bottom by 1
+        return nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
 
 class ResNet10(PreTrainedModel):
     config_class = ResNet10Config
@@ -131,7 +143,8 @@ class ResNet10(PreTrainedModel):
             #             return super().__call__(x)
             nn.GroupNorm(num_groups=4, eps=1e-5, num_channels=self.config.embedding_size),
             ACT2FN[self.config.hidden_act],
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            # nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
+            JaxStyleMaxPool()
         )
 
         self.encoder = Encoder(self.config)

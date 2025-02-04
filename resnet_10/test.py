@@ -3,6 +3,8 @@ import torch.nn as nn
 from transformers import PreTrainedModel, ResNetConfig
 from transformers.activations import ACT2FN
 import numpy as np
+import math
+import torch.nn.functional as F
 
 
 def safe_convert_weights(jax_array, dtype=torch.float32):
@@ -29,6 +31,53 @@ class JaxStyleMaxPool(torch.nn.Module):
     def forward(self, x):
         x = torch.nn.functional.pad(x, (0, 1, 0, 1), value=-float('inf'))  # Pad right/bottom by 1
         return torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
+    
+class JaxStyleConv2d(nn.Module):
+    """Mimics JAX's Conv2D with padding='SAME' for exact parity."""
+    
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=False):
+        super().__init__()
+        
+        # Ensure kernel_size and stride are tuples
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        
+        # Create convolution layer with padding=0 (manual padding will be applied)
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, 
+            kernel_size=self.kernel_size, 
+            stride=self.stride, 
+            padding=0,  # No built-in padding
+            bias=bias
+        )
+
+    def _compute_padding(self, input_height, input_width):
+        """Calculate asymmetric padding to match JAX's 'SAME' behavior."""
+        
+        # Compute padding needed for height and width
+        pad_h = max(0, (math.ceil(input_height / self.stride[0]) - 1) * self.stride[0] + self.kernel_size[0] - input_height)
+        pad_w = max(0, (math.ceil(input_width / self.stride[1]) - 1) * self.stride[1] + self.kernel_size[1] - input_width)
+
+        # Asymmetric padding (JAX-style: more padding on the bottom/right if needed)
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+
+        return (pad_left, pad_right, pad_top, pad_bottom)
+
+    def forward(self, x):
+        """Apply asymmetric padding before convolution."""
+        _, _, h, w = x.shape  # Get input height and width
+        
+        # Compute asymmetric padding
+        pad_left, pad_right, pad_top, pad_bottom = self._compute_padding(h, w)
+        
+        # Apply manual padding (PyTorch format: (left, right, top, bottom))
+        x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+        
+        # Apply convolution
+        return self.conv(x)
 
 class BasicBlock(nn.Module):
     """ResNet basic block that matches the JAX implementation"""
@@ -36,47 +85,49 @@ class BasicBlock(nn.Module):
         super().__init__()
         
         # Match JAX initialization
-        self.conv1 = nn.Conv2d(
+        self.conv1 = JaxStyleConv2d(
             in_channels,
             out_channels,
             kernel_size=3,
             stride=stride,
-            padding=1,
             bias=False,
-            dtype=torch.float32,
         )
-        self.norm1 = MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True, dtype=torch.float32)
+        self.norm1 = MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True)
         self.act1 = nn.ReLU()
         
-        self.conv2 = nn.Conv2d(
+        self.conv2 = JaxStyleConv2d(
             out_channels, 
             out_channels, 
             kernel_size=3, 
-            stride=1, 
-            padding=1, 
+            stride=1,  
             bias=False,
-            dtype=torch.float32
         )
-        self.norm2 = MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True, dtype=torch.float32)
+        self.norm2 = MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True)
         self.act2 = nn.ReLU()
 
         # Only create shortcut if shapes don't match (like JAX implementation)
         self.shortcut = None
         if in_channels != out_channels:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False, dtype=torch.float32),
-                MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True, dtype=torch.float32),
+                JaxStyleConv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                MyGroupNorm(num_groups=norm_groups, num_channels=out_channels, eps=1e-5, affine=True),
             )
 
     def forward(self, x):
         identity = x
         
+        print("TORCH input to block :", x.mean().item())
         out = self.conv1(x)
+        print("TORCH conv1 :", out.mean().item())
         out = self.norm1(out)
+        print("TORCH norm1:", out.mean().item())
         out = self.act1(out)
+        print("TORCH act1 :", out.mean().item())
         
         out = self.conv2(out)
+        print("TORCH conv2 :", out.mean().item())
         out = self.norm2(out)
+        print("TORCH norm2 :", out.mean().item())
         
         if self.shortcut is not None:
             print("TORCH before skip :", identity.mean().item())
@@ -84,8 +135,10 @@ class BasicBlock(nn.Module):
             print("TORCH after conv proj skip :", identity.mean().item())
             identity = self.shortcut[1](identity)
             print("TORCH after skip :", identity.mean().item())
-            
+
+        print("TORCH before **** sum :", out.mean().item())
         out = out + identity
+        print("TORCH after sum :", out.mean().item())
         out = self.act2(out)
         
         return out
@@ -171,11 +224,11 @@ class ResNet10(PreTrainedModel):
             
             # Conv layers
             torch_block.conv1.load_state_dict({
-                "weight": 
+                "conv.weight": 
                     safe_convert_weights(jax_block["Conv_0"]["kernel"]).permute(3, 2, 0, 1)
             })
             torch_block.conv2.load_state_dict({
-                "weight": 
+                "conv.weight": 
                     safe_convert_weights(jax_block["Conv_1"]["kernel"]).permute(3, 2, 0, 1)
             })
 
@@ -192,7 +245,7 @@ class ResNet10(PreTrainedModel):
             # Shortcut projections
             if "conv_proj" in jax_block:
                 torch_block.shortcut[0].load_state_dict({
-                    "weight": 
+                    "conv.weight": 
                         safe_convert_weights(jax_block["conv_proj"]["kernel"]).permute(3, 2, 0, 1)
                 })
                 torch_block.shortcut[1].load_state_dict({
