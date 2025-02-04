@@ -87,7 +87,7 @@ def apply_block_weights(block, jax_state_dict):
 
 
 def convert_jax_conv_state_dict_to_torch_conv_state_dict(jax_state_dict):
-    conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 1, 0)
+    conv = torch.Tensor(list(jax_state_dict["kernel"].tolist())).permute(3, 2, 0, 1)
     return {"weight": conv}
 
 
